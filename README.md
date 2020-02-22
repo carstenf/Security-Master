@@ -3,7 +3,7 @@ database for securities, with import from Quandl and yahoo and ingest to zipline
 
 
 
-securities_master.mwb  
+securities_master.mwb  -> Layout se JPEG
 
 contains the model for the database. This file should be inported by for exp. MySQLWorkbench.
 Open MySQLWorkbench, goto File, than Open Model, than open it.
