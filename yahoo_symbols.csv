@@ -1,0 +1,5 @@
+ticker,name,siccode,sicsector,isdelisted,table,category,exchange
+SPY,S&P 500,,,No,Y1,,INDEX
+PALL,Paladium,,,No,Y1,,INDEX
+^GSPC,S&P 500,,,No,Y1,,INDEX
+^RUT,RUSSEL 2000,,,No,Y1,,INDEX
