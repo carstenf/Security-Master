@@ -39,4 +39,5 @@ db_to_bundle.py
 This is the code to ingest the content of the database to zipline. 
 At the moment it only supports price data. 
 This code has the same function as csvdir.py or quandl.py.
-Please check zipline for usage.                     
+Please check zipline for usage. 
+It will take around 30 min to ingest 20year price data to zipline.
