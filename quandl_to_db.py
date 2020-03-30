@@ -163,7 +163,7 @@ for index, row in tqdm(data.iterrows(), total=data.shape[0]):
             row.ticker,
             row['name'],
             row.siccode,
-            row.sicsector,
+            row.sector,
             row.isdelisted,
             row.table,
             row.category,
