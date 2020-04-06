@@ -18,8 +18,8 @@ This will generate the database as well, same result
 Open a Terminal and type > python quandl_to_db.py 
                      
 Is the code to get the data from quandl and import it to the database. Im using the "Sharadar Core US Equities Bundle"
-It imports price andfundamental data. The code can actually run in 2 Modes, either updating the database or loading
-all existing data for first istallation. Loading the 20years price and fundamental data will take around 12hours. 
+It imports price andfundamental data. The code can actually run in 3 Modes, either updating the database or loading
+all existing data for first istallation from Quandl or disk. Please see header for details. Loading the 20years price and fundamental data will take around 12hours. 
 (maybe someone could optimise this? :)  )
                       
 
