@@ -837,12 +837,12 @@ if __name__ == '__main__':
 
     fill_ticker()
 
-    #fill_SP500_member()
+    fill_SP500_member()
     
-    #fill_corporate_action()
+    fill_corporate_action()
 
-    #fill_price_div_data()
+    fill_price_div_data()
 
-    #fill_fundamental_data()
+    fill_fundamental_data()
 
     print('job done')
