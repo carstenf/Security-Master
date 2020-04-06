@@ -1,7 +1,12 @@
 # Security-Master
 database for securities, with import from Quandl and yahoo and ingest to zipline
 
+Open a Terminal and type > python generate_db.py
+carsten@Carstens-MBP ~ % python generate_db.py
 
+This will generate the database.
+
+or
 
 securities_master.mwb  -> see JPEG
 
@@ -9,9 +14,10 @@ contains the model for the database. This file should be inported by for exp. My
 Open MySQLWorkbench, goto File, than Open Model, than open it.
 You see the layout. Than go to Database, than Forward Engineer and press continue util it is created.
 
+This will generate the database as well, same result
 
-                      
-quandl_to_db.py 
+Open a Terminal and type > python quandl_to_db.py 
+carsten@Carstens-MBP ~ % python quandl_to_db.py                      
 
 Is the code to get the data from quandl and import it to the database. Im using the "Sharadar Core US Equities Bundle"
 It imports price andfundamental data. The code can actually run in 2 Modes, either updating the database or loading
