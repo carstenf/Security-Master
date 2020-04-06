@@ -13,15 +13,15 @@ import timeit
 engine = create_engine('mysql+mysqlconnector://root:root@localhost/securities_master')
 
 # define path to data dump from data vendor
-path_dir = '/Users/carstenfreek/opt/data/quandl/'
-#path_dir = '/Users/carstenfreek/Documents/Python/Database_PLUS/Data/quandl/'
-#path_dir = '/Users/carstenfreek/Documents/Python/Database_PLUS/Data/test/'
+path_dir = '/Users/carsten/opt/data/quandl/'
+#path_dir = '/Users/carsten/Documents/Python/Database_PLUS/Data/quandl/'
+#path_dir = '/Users/carsten/Documents/Python/Database_PLUS/Data/test/'
 
 #ext = '.zip' # for data downloaded with this method -> quandl.export_table('SHARADAR/TICKERS', filename=path) 
 #ext = '.csv' # download manually from Quandl
 
 # input you Quand Api key
-quandl.ApiConfig.api_key = 'zD_5QuaCsD5Tzg-XukhC'
+quandl.ApiConfig.api_key = 'your key'
 quandl.ApiConfig.api_version = '2015-04-09'  
 
 # if update == TRUE, find last date in trade_date collum and download from there until today
