@@ -151,7 +151,6 @@ def process_stocks(symbols, sessions, metadata, divs_splits, ticker_sec_id):
 
     sid = 0
     for symbol in tqdm(symbols):
-        sid += 1
 
         # find the security_id for the symbol / ticker
         security_id = ticker_sec_id.loc[ticker_sec_id.ticker == symbol ].id.iloc[0]  
@@ -173,6 +172,7 @@ def process_stocks(symbols, sessions, metadata, divs_splits, ticker_sec_id):
         dfr_split = pd.read_sql_query(query, engine, index_col='date', parse_dates=['date']) 
 
         if not dfr_price.empty:
+            sid += 1
 
             df = pd.concat([dfr_price, dfr_div, dfr_split], axis=1) 
 
