@@ -55,3 +55,12 @@ db_to_bundle_w_yahoo.py
 
 Example how to mix different sources, for example yahoo and Quandl
 
+
+# Using Funtamental data with zipline:
+
+install the forked Alpha Compiler (forked to work with Security-Master)
+and follow the step explained by Alpha Compiler
+To ingest the fundamental data to zipline just
+
+Open a Terminal and type > python load_quandl_sf1.py
+
