@@ -14,19 +14,13 @@ engine = create_engine('mysql+mysqlconnector://root:root@localhost/securities_ma
 
 # define path to data dump from data vendor
 path_dir = '/Users/carsten/opt/data/quandl/'
-#path_dir = '/Users/carsten/Documents/Python/Database_PLUS/Data/quandl/'
-#path_dir = '/Users/carsten/Documents/Python/Database_PLUS/Data/test/'
 
 #ext = '.zip' # for data downloaded with this method -> quandl.export_table('SHARADAR/TICKERS', filename=path) 
 #ext = '.csv' # download manually from Quandl
 
 # input you Quand Api key
-quandl.ApiConfig.api_key = 'your key'
+quandl.ApiConfig.api_key = 'Quand Api key'
 quandl.ApiConfig.api_version = '2015-04-09'  
-
-# if update == TRUE, find last date in trade_date collum and download from there until today
-# ELSE import all avaiable data from Quandel
-# update_DB = False
 
 # if initalise_from_quandl == TRUE, download budels from Quandel and store them on the disk
 # if initalise_from_quandl == False, read from on the disk
@@ -34,25 +28,16 @@ quandl.ApiConfig.api_version = '2015-04-09'
 
 # mode_db == 1 read everything / from disk, with manual downloaded file from quandl
 # mode_db == 2 read everything / get data directly fom quandel with Quand Api key
-# mode_db == 3 update / get data directly fom quandel with Quand Api key
 
 mode_db = 1 # todo, define as input
 
 if mode_db == 1:
-    update_DB = False
     from_quandl = False
     ext = '.csv'
 
 if mode_db == 2:
-    update_DB = False
     from_quandl = True
-    ext = '.zip'       
-
-if mode_db == 3:
-    update_DB = True
-    from_quandl = True
-    ext = '.zip'      
-    
+    ext = '.zip'           
 
 
 def get_symbol_security_id_quandl(qtable):
@@ -67,8 +52,13 @@ def get_symbol_security_id_quandl(qtable):
     query_1 = """SELECT ticker, id FROM security WHERE """
 
     # choose the Quandel table, ticker for SF1=fundamental , SEP=price or SFP=ETF,INDEX
-    query_2 = """ ttable = '{}' """.format( qtable )
-
+    if qtable == 'SF1':
+        query_2 = """ ttable = '{}' """.format( 'SF1')
+    if qtable == 'SEP':  
+        query_2 = """ ttable = '{}' """.format( 'SEP')
+    if qtable == 'SFP':  
+        query_2 = """ ttable = '{}' """.format( 'SFP')
+    
     query_3 = """ and data_vendor_id = {} """.format( data_vendor_id )
     
     query = query_1 + query_2 + query_3
@@ -254,7 +244,7 @@ def fill_SP500_member():
     data_read = pd.read_csv(path)
 
     # get symbol and security_id from Quandl 
-    query_result_df = get_symbol_security_id_quandl('SF1')
+    query_result_df = get_symbol_security_id_quandl('SEP')
 
     for index, row in tqdm(query_result_df.iterrows(), total=query_result_df.shape[0]):    
         tik           = row.ticker
@@ -310,7 +300,7 @@ def fill_corporate_action():
     data_read = pd.read_csv(path)
 
     # get symbol and security_id from Quandl 
-    query_result_df = get_symbol_security_id_quandl('SF1')
+    query_result_df = get_symbol_security_id_quandl('SEP')
 
     for index, row in tqdm(query_result_df.iterrows(), total=query_result_df.shape[0]):    
         tik           = row.ticker
@@ -354,7 +344,7 @@ def fill_corporate_action():
     print('corp_action table filled')  
 
 
-def fill_price_div_data():
+def fill_price_div_data_SEP():
     ###################################### populate price table  ###########     populate dividents table
 
     ###### this part ist still very very slow, needs around 12 hours to store in database......
@@ -362,50 +352,22 @@ def fill_price_div_data():
     # exchange_id, vendor_id and asset_class_id relation is already stored in the security_id
 
     
-    if update_DB == False:   
+    
     # read price into memonry
-        file_name = 'SHARADAR_SEP' + ext
-        path = path_dir + file_name
-        data_price = pd.read_csv(path)
+    file_name = 'SHARADAR_SEP' + ext
+    path = path_dir + file_name
+    data_price = pd.read_csv(path)
 
     # get symbol and security_id from Quandl 
-    query_result_df = get_symbol_security_id_quandl('SF1')
+    query_result_df = get_symbol_security_id_quandl('SEP')
 
-    for index, row in tqdm(query_result_df.iterrows(), total=query_result_df.shape[0]):    
-        tik           = row.ticker
-        security_id   = row.id
 
-        # get price table from Quandl for specific ticker and table
-        if update_DB == True:
-            # using quandl.get_table for small tables and quandl.export_table for big ones
-            data = quandl.get_table('SHARADAR/SEP', paginate=True, lastupdated={'gte':last_update }, ticker=tik)
-        else:     
-            # read the data from memory
-            data = data_price.loc[data_price['ticker'] == tik ]
-        # handle NaN
-        data = data.fillna(0)
-
-        #print(data)
-
-        if not data.empty:
-
-            # send the prices to the daily_price table
-            insert_init = """insert into daily_price 
+    insert_init_price = """insert into daily_price 
                 (trade_date, open, high, low, close, adj_close, volume , security_id)
-                values """
-        
-            #Add values for all days to the insert statement
-            vals = ",".join(["""('{}',{},{},{},{},{},{},{})""".format (
-            row.date,
-            row.open,
-            row.high,
-            row.low,
-            row.closeunadj,
-            row.close,
-            row.volume,
-            security_id ) for index, row in data.iterrows()]) 
-    
-            insert_end = """  on duplicate key update
+                values """     
+
+
+    insert_end_price = """  on duplicate key update
                 trade_date  =values(trade_date),
                 open        =values(open),
                 high        =values(high),
@@ -415,44 +377,180 @@ def fill_price_div_data():
                 volume      =values(volume),
                 security_id =values(security_id)
                 ;"""
-
-            # Put the 3 query parts together   
-            query = insert_init + vals + insert_end
-            
-            # Fire insert statement
-            engine.execute(query)
-            Process=True
-
-            # send the dividends to the dividends table
-            insert_init = """insert into dividends 
+    
+    insert_init_div = """insert into dividends 
                     (date, dividends, security_id) values """
-        
-            # Add values for all days to the insert statement
-            vals = ",".join(["""('{}',{},{})""".format (
-            row.date,
-            row.dividends,
-            security_id ) for index, row in data.iterrows()]) 
 
-                        
-            insert_end = """  on duplicate key update
+    insert_end_div = """  on duplicate key update
                     date        =values(date),
                     dividends   =values(dividends),
                     security_id =values(security_id)
                     ;"""
+    
+    
+    i=0 # got it from last run , TODO tqdm
+    for ticker, data in data_price.groupby('ticker'):
+        i=i+1
+        print(i,ticker)
 
-            # Put the 3 query parts together   
-            query = insert_init + vals + insert_end
+        if not data.empty:
 
-            # Fire insert statement
-            engine.execute(query)
-            Process=True
+            if not query_result_df[query_result_df.ticker == ticker ].empty:
+
+                security_id=query_result_df[query_result_df.ticker == ticker ].id.iloc[0]
+
+                # handle NaN, database error if get NaN
+                data = data.fillna(0)
+                #data.fillna(method='ffill', inplace=True)
+        
+                #Add values for all days to the insert statement
+                vals = ",".join(["""('{}',{},{},{},{},{},{},{})""".format (          
+                data.at[i, 'date'],   
+                data.at[i, 'open'], 
+                data.at[i, 'high'], 
+                data.at[i, 'low'],   
+                data.at[i, 'closeunadj'], 
+                data.at[i, 'close'], 
+                data.at[i, 'volume'],
+                security_id ) for i in data.index]) 
+
+    
+                # Put the 3 query parts together   
+                query = insert_init_price + vals + insert_end_price        
+            
+                # Fire insert statement
+                engine.execute(query)
+                Process=True
+
+                # send the dividends to the dividends table
+        
+                # Add values for all days to the insert statement
+                vals = ",".join(["""('{}',{},{})""".format (
+                data.at[i, 'date'],  
+                data.at[i, 'dividends'],  
+                security_id ) for i in data.index]) 
+            
+
+                # Put the 3 query parts together   
+                query = insert_init_div + vals + insert_end_div
+            
+                # Fire insert statement
+                engine.execute(query)
+                Process=True
+            else:
+                print(""" ("{}") not in the SEP or SEF dump file""".format(ticker) )    
 
         else:
-            if update_DB == False:
-                # don't print that message for update==True, as a lot of the ticker are delisted    
-                print("""Missing, no price data for ("{}") found""".format(tik) )
+            # don't print that message for update==True, as a lot of the ticker are delisted    
+            print("""Missing, no price data for ("{}") found""".format(ticker) )
             
-    print('daily_price table filled  and dividends table filled')
+    print('SEP daily_price table filled  and dividends table filled')
+
+
+
+def fill_price_div_data_SFP():
+    ###################################### populate price table  ###########     populate dividents table
+
+    ###### this part ist still very very slow, needs around 12 hours to store in database......
+
+    # exchange_id, vendor_id and asset_class_id relation is already stored in the security_id
+
+    
+      
+    # read price into memonry
+    file_name = 'SHARADAR_SFP' + ext
+    path = path_dir + file_name
+    data_price = pd.read_csv(path)
+
+    # get symbol and security_id from Quandl 
+    query_result_df = get_symbol_security_id_quandl('SFP')
+
+
+    insert_init_price = """insert into daily_price 
+                (trade_date, open, high, low, close, adj_close, volume , security_id)
+                values """     
+
+
+    insert_end_price = """  on duplicate key update
+                trade_date  =values(trade_date),
+                open        =values(open),
+                high        =values(high),
+                low         =values(low),
+                close       =values(close),
+                adj_close   =values(adj_close),
+                volume      =values(volume),
+                security_id =values(security_id)
+                ;"""
+    
+    insert_init_div = """insert into dividends 
+                    (date, dividends, security_id) values """
+
+    insert_end_div = """  on duplicate key update
+                    date        =values(date),
+                    dividends   =values(dividends),
+                    security_id =values(security_id)
+                    ;"""
+    
+    
+    i=0 # got it from last run , TODO tqdm
+    for ticker, data in data_price.groupby('ticker'):
+        i=i+1
+        print(i,ticker)
+
+        if not data.empty:
+
+            if not query_result_df[query_result_df.ticker == ticker ].empty:
+
+                security_id=query_result_df[query_result_df.ticker == ticker ].id.iloc[0]
+
+                # handle NaN, database error if get NaN
+                data = data.fillna(0)
+                #data.fillna(method='ffill', inplace=True)
+        
+                #Add values for all days to the insert statement
+                vals = ",".join(["""('{}',{},{},{},{},{},{},{})""".format (          
+                data.at[i, 'date'],   
+                data.at[i, 'open'], 
+                data.at[i, 'high'], 
+                data.at[i, 'low'],   
+                data.at[i, 'closeunadj'], 
+                data.at[i, 'close'], 
+                data.at[i, 'volume'],
+                security_id ) for i in data.index]) 
+
+    
+                # Put the 3 query parts together   
+                query = insert_init_price + vals + insert_end_price        
+            
+                # Fire insert statement
+                engine.execute(query)
+                Process=True
+
+                # send the dividends to the dividends table
+        
+                # Add values for all days to the insert statement
+                vals = ",".join(["""('{}',{},{})""".format (
+                data.at[i, 'date'],  
+                data.at[i, 'dividends'],  
+                security_id ) for i in data.index]) 
+            
+
+                # Put the 3 query parts together   
+                query = insert_init_div + vals + insert_end_div
+            
+                # Fire insert statement
+                engine.execute(query)
+                Process=True
+            else:
+                print(""" ("{}") not in the SEP or SEF dump file""".format(ticker) )    
+
+        else:
+            
+            # don't print that message for update==True, as a lot of the ticker are delisted    
+            print("""Missing, no price data for ("{}") found""".format(ticker) )
+            
+    print('SFP daily_price table filled  and dividends table filled')
+
 
 
 def fill_fundamental_data(): 
@@ -462,51 +560,18 @@ def fill_fundamental_data():
 
     # exchange_id, vendor_id and asset_class_id relation is already stored in the security_id
 
-    if update_DB == False:
-        # read price into memonry
-        file_name = 'SHARADAR_SF1' + ext
-        path = path_dir + file_name
-        data_funda = pd.read_csv(path)
+   
+    # read price into memonry
+    file_name = 'SHARADAR_SF1' + ext
+    path = path_dir + file_name
+    data_funda = pd.read_csv(path)
 
 
     # Build a list with tickers from security table
     query_result_df = get_symbol_security_id_quandl('SF1')
 
-
-    for index, row in tqdm(query_result_df.iterrows(), total=query_result_df.shape[0]):
-#    for index, row in tqdm(query_result_df[query_result_df['id'] >= 11870].iterrows(), total=query_result_df.shape[0]):      
-        tik           = row.ticker
-        security_id   = row.id
-
-        # get price table from Quandl for specific ticker and table
-        if update_DB == True:
-        # using quandl.get_table for small tables and quandl.export_table for big ones
-            result = quandl.get_table('SHARADAR/SF1', paginate=True, lastupdated={'gte':last_update }, ticker=tik)
-        else:     
-        # read data from memory
-            result = data_funda.loc[data_funda['ticker'] == tik ]
-        
-        if not result.empty:    
-            # copy required dimensions into data 
-            # ???? (result.loc[result.dimension == 'MRY' ] and result.[result.dimension == 'MRY' ] gets same result ???)
-            #result6 = result.loc[result.dimension == 'MRY' ]
-            #result5 = result.loc[result.dimension == 'MRQ']
-            #result4 = result.loc[result.dimension == 'MRT']
-            result3 = result.loc[result.dimension == 'ARY']
-            result2 = result.loc[result.dimension == 'ARQ' ]
-            result1 = result.loc[result.dimension == 'ART' ]
-
-
-            
-            data = pd.concat([result1, result2, result3], ignore_index=True)
-            
-            # handle NaN
-            data = data.fillna(0)
-
-            if not data.empty: 
-
-                # send the prices to the daily_price table       
-                insert_init = """insert into fundamental 
+    # send the prices to the daily_price table       
+    insert_init = """insert into fundamental 
                     (revenue, cor, sgna, rnd, opex, intexp, taxexp, netincdis, consolinc, netincnci,
                     netinc, prefdivis, netinccmn, eps, epsdil, shareswa, shareswadil, capex, ncfbus, ncfinv,
                     ncff, ncfdebt, ncfcommon, ncfdiv, ncfi, ncfo, ncfx, ncf, sbcomp, depamor,
@@ -519,10 +584,155 @@ def fill_fundamental_data():
                     evebit, pe, pe1, sps, ps1, ps, pb, de, divyield, currentratio,
                     workingcapital, fcfps, bvps, tbvps, price, ticker, dimension, calendardate, datekey,reportperiod,
                     lastupdated, security_id) values """
+    
+    
+    insert_end = """  on duplicate key update
+                        revenue     =values(revenue), 
+                        cor         =values(cor),
+                        sgna        =values(sgna),
+                        rnd         =values(rnd),
+                        opex        =values(opex),
+                        intexp      =values(intexp),
+                        taxexp      =values(taxexp),
+                        netincdis   =values(netincdis),
+                        consolinc   =values(consolinc),
+                        netincnci   =values(netincnci),
+                        netinc      =values(netinc),
+                        prefdivis   =values(prefdivis),
+                        netinccmn   =values(netinccmn),
+                        eps         =values(eps),
+                        epsdil      =values(epsdil),
+                        shareswa    =values(shareswa),
+                        shareswadil =values(shareswadil),
+                        capex       =values(capex),
+                        ncfbus      =values(ncfbus),
+                        ncfinv      =values(ncfinv),
+                        ncff        =values(ncff),
+                        ncfdebt     =values(ncfdebt),
+                        ncfcommon   =values(ncfcommon),
+                        ncfdiv      =values(ncfdiv),
+                        ncfi        =values(ncfi),
+                        ncfo        =values(ncfo),
+                        ncfx        =values(ncfx),
+                        ncf         =values(ncf),
+                        sbcomp      =values(sbcomp),
+                        depamor     =values(depamor),
+                        assets      =values(assets),
+                        cashneq     =values(cashneq),
+                        investments   =values(investments),
+                        investmentsc  =values(investmentsc),
+                        investmentsnc =values(investmentsnc),
+                        deferredrev   =values(deferredrev),
+                        deposits      =values(deposits),
+                        ppnenet       =values(ppnenet),
+                        inventory     =values(inventory),
+                        taxassets     =values(taxassets),
+                        receivables   =values(receivables),
+                        payables      =values(payables),
+                        intangibles   =values(intangibles),
+                        liabilities   =values(liabilities),
+                        equity        =values(equity),
+                        retearn       =values(retearn),
+                        accoci        =values(accoci),
+                        assetsc       =values(assetsc),
+                        assetsnc      =values(assetsnc),
+                        liabilitiesc  =values(liabilitiesc),
+                        liabilitiesnc =values(liabilitiesnc),
+                        taxliabilities =values(taxliabilities),
+                        debt           =values(debt),
+                        debtc          =values(debtc),
+                        debtnc         =values(debtnc),
+                        ebt            =values(ebt),
+                        ebit           =values(ebit),
+                        ebitda         =values(ebitda),
+                        fxusd          =values(fxusd),
+                        equityusd      =values(equityusd),
+                        epsusd         =values(epsusd),
+                        revenueusd     =values(revenueusd),
+                        netinccmnusd   =values(netinccmnusd),
+                        cashnequsd     =values(cashnequsd),
+                        debtusd        =values(debtusd),
+                        ebitusd        =values(ebitusd),
+                        ebitdausd      =values(ebitdausd),
+                        sharesbas      =values(sharesbas),
+                        dps            =values(dps),
+                        sharefactor    =values(sharefactor),
+                        marketcap      =values(marketcap),
+                        ev             =values(ev),
+                        invcap         =values(invcap),
+                        equityavg      =values(equityavg),
+                        assetsavg      =values(assetsavg),
+                        invcapavg      =values(invcapavg),
+                        tangibles      =values(tangibles),
+                        roe            =values(roe),
+                        roa            =values(roa),
+                        fcf            =values(fcf),
+                        roic           =values(roic),
+                        gp             =values(gp),
+                        opinc          =values(opinc),
+                        grossmargin    =values(grossmargin),
+                        netmargin      =values(netmargin),
+                        ebitdamargin   =values(ebitdamargin),
+                        ros            =values(ros),
+                        assetturnover  =values(assetturnover),
+                        payoutratio    =values(payoutratio),
+                        evebitda       =values(evebitda),
+                        evebit         =values(evebit),
+                        pe             =values(pe),
+                        pe1            =values(pe1),
+                        sps            =values(sps),
+                        ps1            =values(ps1),
+                        ps             =values(ps),
+                        pb             =values(pb),
+                        de             =values(de),
+                        divyield       =values(divyield),
+                        currentratio   =values(currentratio),
+                        workingcapital =values(workingcapital),
+                        fcfps          =values(fcfps),
+                        bvps           =values(bvps),
+                        tbvps          =values(tbvps),
+                        price          =values(price),
+                        ticker         =values(ticker),
+                        dimension      =values(dimension),
+                        calendardate   =values(calendardate),
+                        datekey        =values(datekey),
+                        reportperiod   =values(reportperiod),
+                        lastupdated    =values(lastupdated),
+                        security_id    =values(security_id)
+                        ;"""
+
+
+    i=0 # got it from last run , TODO tqdm
+    for ticker, result in data_funda.groupby('ticker'):
+        i=i+1
+        print(i,ticker)
+
+        if not result.empty:
+
+            if not query_result_df[query_result_df.ticker == ticker ].empty:
+
+                security_id=query_result_df[query_result_df.ticker == ticker ].id.iloc[0]
+
+                # copy required dimensions into data 
+                # ???? (result.loc[result.dimension == 'MRY' ] and result.[result.dimension == 'MRY' ] gets same result ???)
+                #result6 = result.loc[result.dimension == 'MRY' ]
+                #result5 = result.loc[result.dimension == 'MRQ']
+                #result4 = result.loc[result.dimension == 'MRT']
+                result3 = result.loc[result.dimension == 'ARY']
+                result2 = result.loc[result.dimension == 'ARQ' ]
+                result1 = result.loc[result.dimension == 'ART' ]
+
+                data = pd.concat([result1, result2, result3], ignore_index=True)
+
+                if not data.empty: 
+
+                    # handle NaN, database error if get NaN
+                    data = data.fillna(0)
+                    #data.fillna(method='ffill', inplace=True) # did not work           
+
                 
-                
-                # Add values for all days to the insert statement
-                vals = ",".join(["""( {},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},
+                    # Add values for all days to the insert statement
+                    vals = ",".join(["""( {},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},
                                     {},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},
                                     {},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},
                                     {},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},
@@ -644,135 +854,24 @@ def fill_fundamental_data():
                         security_id) for index, row in data.iterrows()])        
 
                 
-                insert_end = """  on duplicate key update
-                        revenue     =values(revenue), 
-                        cor         =values(cor),
-                        sgna        =values(sgna),
-                        rnd         =values(rnd),
-                        opex        =values(opex),
-                        intexp      =values(intexp),
-                        taxexp      =values(taxexp),
-                        netincdis   =values(netincdis),
-                        consolinc   =values(consolinc),
-                        netincnci   =values(netincnci),
-                        netinc      =values(netinc),
-                        prefdivis   =values(prefdivis),
-                        netinccmn   =values(netinccmn),
-                        eps         =values(eps),
-                        epsdil      =values(epsdil),
-                        shareswa    =values(shareswa),
-                        shareswadil =values(shareswadil),
-                        capex       =values(capex),
-                        ncfbus      =values(ncfbus),
-                        ncfinv      =values(ncfinv),
-                        ncff        =values(ncff),
-                        ncfdebt     =values(ncfdebt),
-                        ncfcommon   =values(ncfcommon),
-                        ncfdiv      =values(ncfdiv),
-                        ncfi        =values(ncfi),
-                        ncfo        =values(ncfo),
-                        ncfx        =values(ncfx),
-                        ncf         =values(ncf),
-                        sbcomp      =values(sbcomp),
-                        depamor     =values(depamor),
-                        assets      =values(assets),
-                        cashneq     =values(cashneq),
-                        investments   =values(investments),
-                        investmentsc  =values(investmentsc),
-                        investmentsnc =values(investmentsnc),
-                        deferredrev   =values(deferredrev),
-                        deposits      =values(deposits),
-                        ppnenet       =values(ppnenet),
-                        inventory     =values(inventory),
-                        taxassets     =values(taxassets),
-                        receivables   =values(receivables),
-                        payables      =values(payables),
-                        intangibles   =values(intangibles),
-                        liabilities   =values(liabilities),
-                        equity        =values(equity),
-                        retearn       =values(retearn),
-                        accoci        =values(accoci),
-                        assetsc       =values(assetsc),
-                        assetsnc      =values(assetsnc),
-                        liabilitiesc  =values(liabilitiesc),
-                        liabilitiesnc =values(liabilitiesnc),
-                        taxliabilities =values(taxliabilities),
-                        debt           =values(debt),
-                        debtc          =values(debtc),
-                        debtnc         =values(debtnc),
-                        ebt            =values(ebt),
-                        ebit           =values(ebit),
-                        ebitda         =values(ebitda),
-                        fxusd          =values(fxusd),
-                        equityusd      =values(equityusd),
-                        epsusd         =values(epsusd),
-                        revenueusd     =values(revenueusd),
-                        netinccmnusd   =values(netinccmnusd),
-                        cashnequsd     =values(cashnequsd),
-                        debtusd        =values(debtusd),
-                        ebitusd        =values(ebitusd),
-                        ebitdausd      =values(ebitdausd),
-                        sharesbas      =values(sharesbas),
-                        dps            =values(dps),
-                        sharefactor    =values(sharefactor),
-                        marketcap      =values(marketcap),
-                        ev             =values(ev),
-                        invcap         =values(invcap),
-                        equityavg      =values(equityavg),
-                        assetsavg      =values(assetsavg),
-                        invcapavg      =values(invcapavg),
-                        tangibles      =values(tangibles),
-                        roe            =values(roe),
-                        roa            =values(roa),
-                        fcf            =values(fcf),
-                        roic           =values(roic),
-                        gp             =values(gp),
-                        opinc          =values(opinc),
-                        grossmargin    =values(grossmargin),
-                        netmargin      =values(netmargin),
-                        ebitdamargin   =values(ebitdamargin),
-                        ros            =values(ros),
-                        assetturnover  =values(assetturnover),
-                        payoutratio    =values(payoutratio),
-                        evebitda       =values(evebitda),
-                        evebit         =values(evebit),
-                        pe             =values(pe),
-                        pe1            =values(pe1),
-                        sps            =values(sps),
-                        ps1            =values(ps1),
-                        ps             =values(ps),
-                        pb             =values(pb),
-                        de             =values(de),
-                        divyield       =values(divyield),
-                        currentratio   =values(currentratio),
-                        workingcapital =values(workingcapital),
-                        fcfps          =values(fcfps),
-                        bvps           =values(bvps),
-                        tbvps          =values(tbvps),
-                        price          =values(price),
-                        ticker         =values(ticker),
-                        dimension      =values(dimension),
-                        calendardate   =values(calendardate),
-                        datekey        =values(datekey),
-                        reportperiod   =values(reportperiod),
-                        lastupdated    =values(lastupdated),
-                        security_id    =values(security_id)
-                        ;"""
+                    
+                    # Put the 3 query parts together   
+                    query = insert_init + vals + insert_end
 
-                # Put the 3 query parts together   
-                query = insert_init + vals + insert_end
+                    # Fire insert statement
+                    engine.execute(query)
+                    Process=True
+            
+            else:
+                # theoretical should be no error, only if ticker is in the fundamental ist and is not in the ticker list     
+                print("""Strange, no ticker found in security db but fundamental data for ("{}") exist""".format(ticker) )
 
-                # Fire insert statement
-                engine.execute(query)
-                Process=True
 
         else:
-            if update_DB == False:
-                # don't print that message for update==True, as a lot of the ticker are delisted     
-                print("""Missing, no fundamental data for ("{}") found""".format(tik) )
+            # don't print that message for update==True, as a lot of the ticker are delisted     
+            print("""Missing, no fundamental data for ("{}") found""".format(ticker) )
         
     print('fundamental table filled')
-
 
 
 if __name__ == '__main__':
@@ -796,41 +895,28 @@ if __name__ == '__main__':
         file_name = 'SHARADAR_ACTIONS.zip'
         path = path_dir + file_name
         dummy = quandl.export_table('SHARADAR/ACTIONS', filename=path) 
+      
+        # download SEP price data 
+        print('get price data from Quandl...downloading price date, takes 5 min')
+        file_name = 'SHARADAR_SEP.zip'
+        path = path_dir + file_name
+        dummy = quandl.export_table('SHARADAR/SEP', filename=path)
+
+        # download SFP price data
+        print('get price data from Quandl...downloading price date, takes 5 min')
+        file_name = 'SHARADAR_SFP.zip'
+        path = path_dir + file_name
+        dummy = quandl.export_table('SHARADAR/SFP', filename=path)
+
+        # download fundamental data
+        print('get fundamental data from Quandl...downloading fundamental date, takes 5 min')
+        file_name = 'SHARADAR_SF1.zip'
+        path = path_dir + file_name
+        dummy = quandl.export_table('SHARADAR/SF1', filename=path)
+
+        print('All files downloaded from Quandl')
     # else
-        # read everything from disk    
-
-
-
-
-
-    if update_DB == True:
-        # download data from Quandl
-        query = """SELECT MAX(trade_date) AS 'last_date' FROM daily_price;"""
-        update = pd.read_sql_query(query, engine)
-        last_update = update.last_date[0]
-        # just to bypass the last date in the collum and starts reading from where i want
-        #last_update = '2020-02-04' 
-
-       
-    else: 
-        # download dundels from Quandl   
-        #  
-        if from_quandl == True:    
-            # download price data
-            print('get price data from Quandl...downloading price date, takes 5 min')
-            file_name = 'SHARADAR_SEP.zip'
-            path = path_dir + file_name
-            dummy = quandl.export_table('SHARADAR/SEP', filename=path)
-
-            # download fundamental data
-            print('get fundamental data from Quandl...downloading fundamental date, takes 5 min')
-            file_name = 'SHARADAR_SF1.zip'
-            path = path_dir + file_name
-            dummy = quandl.export_table('SHARADAR/SEP', filename=path)
-
-            print('All files downloaded from Quandl')
-        # else
-            # read everything from disk
+        # read everything from disk
 
     
     initalise_database()
@@ -841,7 +927,9 @@ if __name__ == '__main__':
     
     fill_corporate_action()
 
-    fill_price_div_data()
+    fill_price_div_data_SEP()
+
+    fill_price_div_data_SFP()
 
     fill_fundamental_data()
 
