@@ -150,7 +150,7 @@ if __name__ == '__main__':
         `high` DOUBLE NULL DEFAULT NULL,
         `low` DOUBLE NULL DEFAULT NULL,
         `close` DOUBLE NULL DEFAULT NULL,
-        `adj_close` DOUBLE NULL DEFAULT NULL,
+        `closeunadj` DOUBLE NULL DEFAULT NULL,
         `volume` DOUBLE NULL DEFAULT NULL,
         `security_id` INT(11) NOT NULL,
         PRIMARY KEY (`id`),

@@ -7,13 +7,12 @@ import quandl
 import zipfile
 import timeit
 
-
-
 # create the engine for the database
 engine = create_engine('mysql+mysqlconnector://root:root@localhost/securities_master')
 
 # define path to data dump from data vendor
-path_dir = '/Users/carsten/opt/data/quandl/'
+#path_dir = '/Users/carsten/opt/data/quandl/'
+path_dir = '/Users/carsten/ziplinetools/data/quandl/'
 
 #ext = '.zip' # for data downloaded with this method -> quandl.export_table('SHARADAR/TICKERS', filename=path) 
 #ext = '.csv' # download manually from Quandl
@@ -71,8 +70,7 @@ def get_symbol_security_id_quandl(qtable):
 def get_name_exchange_id():
     
     query = """SELECT id, name FROM exchange;"""
-    result = pd.read_sql_query(query, engine)
-    
+    result = pd.read_sql_query(query, engine) 
     return result
     
 
@@ -80,7 +78,6 @@ def initalise_database():
     ############################## fill the 3 small table Data Vendor, Asset Class and Exchange Table ########
 
     #Define Data Vendors and populate data_vendor table
-
     df_vendor=pd.DataFrame({'names': ['Quandl','yahoo'], 'website': ['www.qandl.com', 'www.yahoo.com']})
     # Fill Data Vendor
     # initial
@@ -232,7 +229,6 @@ def fill_ticker():
       
     print('ticker table filled')
 
-
 def fill_SP500_member():
     ################################################################ fill SP00 Members table
 
@@ -344,28 +340,31 @@ def fill_corporate_action():
     print('corp_action table filled')  
 
 
-def fill_price_div_data_SEP():
+def fill_price_div_data(name):
     ###################################### populate price table  ###########     populate dividents table
 
     ###### this part ist still very very slow, needs around 12 hours to store in database......
 
     # exchange_id, vendor_id and asset_class_id relation is already stored in the security_id
-
-    
     
     # read price into memonry
-    file_name = 'SHARADAR_SEP' + ext
+    if name == 'SEP':
+        file_name = 'SHARADAR_SEP' + ext
+        # get symbol and security_id from Quandl 
+        query_result_df = get_symbol_security_id_quandl('SEP')
+
+    if name == 'SFP':    
+        file_name = 'SHARADAR_SFP' + ext
+        # get symbol and security_id from Quandl 
+        query_result_df = get_symbol_security_id_quandl('SFP')  
+
     path = path_dir + file_name
+    print('reading {} '.format(path))  
     data_price = pd.read_csv(path)
 
-    # get symbol and security_id from Quandl 
-    query_result_df = get_symbol_security_id_quandl('SEP')
-
-
     insert_init_price = """insert into daily_price 
-                (trade_date, open, high, low, close, adj_close, volume , security_id)
+                (trade_date, open, high, low, close, closeunadj, volume , security_id)
                 values """     
-
 
     insert_end_price = """  on duplicate key update
                 trade_date  =values(trade_date),
@@ -373,7 +372,7 @@ def fill_price_div_data_SEP():
                 high        =values(high),
                 low         =values(low),
                 close       =values(close),
-                adj_close   =values(adj_close),
+                closeunadj  =values(closeunadj),
                 volume      =values(volume),
                 security_id =values(security_id)
                 ;"""
@@ -388,10 +387,10 @@ def fill_price_div_data_SEP():
                     ;"""
     
     
-    i=0 # got it from last run , TODO tqdm
-    for ticker, data in data_price.groupby('ticker'):
-        i=i+1
-        print(i,ticker)
+    #j=0 # got it from last run , TODO tqdm
+    for ticker, data in tqdm(data_price.groupby('ticker')):
+        #j=j+1
+        #print(j,ticker)
 
         if not data.empty:
 
@@ -402,19 +401,18 @@ def fill_price_div_data_SEP():
                 # handle NaN, database error if get NaN
                 data = data.fillna(0)
                 #data.fillna(method='ffill', inplace=True)
-        
+                                
                 #Add values for all days to the insert statement
-                vals = ",".join(["""('{}',{},{},{},{},{},{},{})""".format (          
-                data.at[i, 'date'],   
-                data.at[i, 'open'], 
-                data.at[i, 'high'], 
-                data.at[i, 'low'],   
-                data.at[i, 'closeunadj'], 
-                data.at[i, 'close'], 
+                vals = ",".join(["""('{}',{},{},{},{},{},{},{})""".format (
+                data.at[i, 'date'],
+                data.at[i, 'open'],
+                data.at[i, 'high'],
+                data.at[i, 'low'],
+                data.at[i, 'close'],
+                data.at[i, 'closeunadj'],
                 data.at[i, 'volume'],
-                security_id ) for i in data.index]) 
+                security_id ) for i in data.index])
 
-    
                 # Put the 3 query parts together   
                 query = insert_init_price + vals + insert_end_price        
             
@@ -444,113 +442,7 @@ def fill_price_div_data_SEP():
             # don't print that message for update==True, as a lot of the ticker are delisted    
             print("""Missing, no price data for ("{}") found""".format(ticker) )
             
-    print('SEP daily_price table filled  and dividends table filled')
-
-
-
-def fill_price_div_data_SFP():
-    ###################################### populate price table  ###########     populate dividents table
-
-    ###### this part ist still very very slow, needs around 12 hours to store in database......
-
-    # exchange_id, vendor_id and asset_class_id relation is already stored in the security_id
-
-    
-      
-    # read price into memonry
-    file_name = 'SHARADAR_SFP' + ext
-    path = path_dir + file_name
-    data_price = pd.read_csv(path)
-
-    # get symbol and security_id from Quandl 
-    query_result_df = get_symbol_security_id_quandl('SFP')
-
-
-    insert_init_price = """insert into daily_price 
-                (trade_date, open, high, low, close, adj_close, volume , security_id)
-                values """     
-
-
-    insert_end_price = """  on duplicate key update
-                trade_date  =values(trade_date),
-                open        =values(open),
-                high        =values(high),
-                low         =values(low),
-                close       =values(close),
-                adj_close   =values(adj_close),
-                volume      =values(volume),
-                security_id =values(security_id)
-                ;"""
-    
-    insert_init_div = """insert into dividends 
-                    (date, dividends, security_id) values """
-
-    insert_end_div = """  on duplicate key update
-                    date        =values(date),
-                    dividends   =values(dividends),
-                    security_id =values(security_id)
-                    ;"""
-    
-    
-    i=0 # got it from last run , TODO tqdm
-    for ticker, data in data_price.groupby('ticker'):
-        i=i+1
-        print(i,ticker)
-
-        if not data.empty:
-
-            if not query_result_df[query_result_df.ticker == ticker ].empty:
-
-                security_id=query_result_df[query_result_df.ticker == ticker ].id.iloc[0]
-
-                # handle NaN, database error if get NaN
-                data = data.fillna(0)
-                #data.fillna(method='ffill', inplace=True)
-        
-                #Add values for all days to the insert statement
-                vals = ",".join(["""('{}',{},{},{},{},{},{},{})""".format (          
-                data.at[i, 'date'],   
-                data.at[i, 'open'], 
-                data.at[i, 'high'], 
-                data.at[i, 'low'],   
-                data.at[i, 'closeunadj'], 
-                data.at[i, 'close'], 
-                data.at[i, 'volume'],
-                security_id ) for i in data.index]) 
-
-    
-                # Put the 3 query parts together   
-                query = insert_init_price + vals + insert_end_price        
-            
-                # Fire insert statement
-                engine.execute(query)
-                Process=True
-
-                # send the dividends to the dividends table
-        
-                # Add values for all days to the insert statement
-                vals = ",".join(["""('{}',{},{})""".format (
-                data.at[i, 'date'],  
-                data.at[i, 'dividends'],  
-                security_id ) for i in data.index]) 
-            
-
-                # Put the 3 query parts together   
-                query = insert_init_div + vals + insert_end_div
-            
-                # Fire insert statement
-                engine.execute(query)
-                Process=True
-            else:
-                print(""" ("{}") not in the SEP or SEF dump file""".format(ticker) )    
-
-        else:
-            
-            # don't print that message for update==True, as a lot of the ticker are delisted    
-            print("""Missing, no price data for ("{}") found""".format(ticker) )
-            
-    print('SFP daily_price table filled  and dividends table filled')
-
+    print('{} daily_price table filled and dividends table filled'.format(name))
 
 
 def fill_fundamental_data(): 
@@ -559,13 +451,11 @@ def fill_fundamental_data():
     ###### this part ist as well still very very slow to store in database......
 
     # exchange_id, vendor_id and asset_class_id relation is already stored in the security_id
-
    
     # read price into memonry
     file_name = 'SHARADAR_SF1' + ext
     path = path_dir + file_name
     data_funda = pd.read_csv(path)
-
 
     # Build a list with tickers from security table
     query_result_df = get_symbol_security_id_quandl('SF1')
@@ -702,10 +592,10 @@ def fill_fundamental_data():
                         ;"""
 
 
-    i=0 # got it from last run , TODO tqdm
-    for ticker, result in data_funda.groupby('ticker'):
-        i=i+1
-        print(i,ticker)
+    #i=0 # got it from last run , TODO tqdm
+    for ticker, result in tqdm(data_funda.groupby('ticker')):
+        #i=i+1
+        #print(i,ticker)
 
         if not result.empty:
 
@@ -927,9 +817,9 @@ if __name__ == '__main__':
     
     fill_corporate_action()
 
-    fill_price_div_data_SEP()
+    fill_price_div_data('SEP')
 
-    fill_price_div_data_SFP()
+    fill_price_div_data('SFP')
 
     fill_fundamental_data()
 

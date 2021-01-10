@@ -36,6 +36,9 @@ def available_stocks():
     qtable1= 'SEP'
     qtable2= 'SFP'
     
+    # only SEP = True, both SEP and SFP = False
+    only_SEP = False
+    
     # define which data vender to use 
     query = """SELECT id FROM securities_master.data_vendor WHERE name = '{}' ; """.format(data_vendor1)
     value = pd.read_sql_query(query, engine)
@@ -77,11 +80,12 @@ def available_stocks():
     
     query_1 = """SELECT distinct ticker, id FROM security WHERE """
 
-#   use SEP and SFP
-#    query_2 = """  ( ttable = '{}' or ttable =  '{}' ) """.format( qtable1, qtable2)
-
-#   use only SEP
-    query_2 = """  ( ttable = '{}'  ) """.format( qtable1)
+    if only_SEP == True:
+#       use only SEP
+        query_2 = """  ( ttable = '{}'  ) """.format( qtable1)
+    else:
+#       use SEP and SFP
+        query_2 = """  ( ttable = '{}' or ttable =  '{}' ) """.format( qtable1, qtable2)
     
     query_3 = """ and (data_vendor_id = {}  )""".format( data_vendor_id1 )
 
@@ -136,7 +140,7 @@ def sec_master_q(environ,
                                               'end_date',
                                               'auto_close_date',
                                               'symbol',
-                                              'exchange'
+                                              'exchange',    # exchange is a dict, exchange = {'exchange': 'NYSE', 'canonical_name': 'NYSE', 'country_code': 'US'} 
                                               )
                                      )
 
@@ -148,9 +152,17 @@ def sec_master_q(environ,
             process_stocks(symbols, sessions, metadata, divs_splits, ticker_id)
             )
 
+    # if us stocks:
+    exchange = {'exchange': 'NYSE', 'canonical_name': 'NYSE', 'country_code': 'US'}  # changes for zipline 1.4                                
+    # if other stocks:  
+    # exchange = {'exchange': 'xxxx', 'canonical_name': 'xxxx', 'country_code': 'xx'}  # changes for zipline 1.4     
+    exchange_df = pd.DataFrame(exchange,index = [0])  # changes for zipline 1.4 
+
     # Write the metadata
-    asset_db_writer.write(equities=metadata)
+    #asset_db_writer.write(equities=metadata) # old version
+    asset_db_writer.write(equities=metadata,exchanges=exchange_df) # changes for zipline 1.4  
     
+
     # # Write splits and dividends
     divs_splits['divs']['sid'] = divs_splits['divs']['sid'].astype(int)
     divs_splits['splits']['sid'] = divs_splits['splits']['sid'].astype(int)
@@ -158,6 +170,8 @@ def sec_master_q(environ,
     #print('div',divs_splits['divs'], 'split',divs_splits['splits'])
     adjustment_writer.write(splits=divs_splits['splits'],
                             dividends=divs_splits['divs'])
+
+    print('ready')                        
 
     
     
@@ -171,101 +185,123 @@ def process_stocks(symbols, sessions, metadata, divs_splits, ticker_sec_id):
 
     us_calendar = get_calendar("NYSE").all_sessions
 
+    # Make a database query for all ticker which changed their ticker, like Goog -> Gooogl
+    query =  """SELECT contraticker FROM securities_master.corp_action where action = 'tickerchangefrom' """
+    list_of_changed_ticker = list(pd.read_sql_query(query, engine).contraticker)
+    #print(list_of_changed_ticker)
+    print('removing double ingesting of {} tickers from the database which symbols where changed to new ones, like Goog -> Gooogl'.format(len(list_of_changed_ticker )))
+
     sid = 0
     for symbol in tqdm(symbols):
 
         #if sid > 50:
         #    continue
-       
-
-        # find the security_id for the symbol / ticker
-        security_id = ticker_sec_id.loc[ticker_sec_id.ticker == symbol ].id.iloc[0]  
-
-        # Make a database query
-        query =  """SELECT trade_date as date, open, high, low, close, volume 
-                      FROM daily_price WHERE security_id = {} order by trade_date """.format(security_id)
             
-        dfr_price = pd.read_sql_query(query, engine, index_col='date', parse_dates=['date'])  
-
-        query =  """SELECT date as date, dividends as dividend FROM dividends WHERE
-                      security_id = {} order by date """.format(security_id)
-        dfr_div = pd.read_sql_query(query, engine, index_col='date', parse_dates=['date']) 
-
-        # Aussure that split date does not lie outside price date.
-        if not dfr_price.empty:
-            start_date_d = dfr_price.index[0].date()
-            end_date_d = dfr_price.index[-1].date()        
-
-            query =  """SELECT date, value as split FROM corp_action WHERE
-                     action ='split'  and security_id = {} and date >= '{}' and date <= '{}'  order by date """.format(security_id, start_date_d, end_date_d) 
-            dfr_split = pd.read_sql_query(query, engine, index_col='date', parse_dates=['date']) 
-
-
-        if not dfr_price.empty:
-            #print(symbol)
-            sid += 1
-
-            # check to see if there are missing dates in the middle
-            this_cal = us_calendar[(us_calendar >= dfr_price.index[0]) & (us_calendar <= dfr_price.index[-1])]
-            if len(this_cal) != dfr_price.shape[0]:
-                print('MISSING interstitial dates for: %s using forward fill' % symbol)
-                print('number of dates missing: {}'.format(len(this_cal) - dfr_price.shape[0]))
-                df_desired = pd.DataFrame(index=this_cal.tz_localize(None))
-                df_desired = df_desired.join(dfr_price)
-                dfr_price = df_desired.fillna(method='ffill')    
-        
-            # Check first and last date of price data.
-            start_date = dfr_price.index[0]
-            end_date = dfr_price.index[-1]   
-            # The auto_close date is the day after the last trade.
-            ac_date = end_date + pd.Timedelta(days=1)        
-            # Add a row to the metadata DataFrame.
-            metadata.loc[sid] = start_date, end_date, ac_date, symbol, 'NYSE'
-        
+        # skip all ticker which changed their ticker, like Goog -> Gooogl
+        if symbol not in list_of_changed_ticker:
             
-            # Divindents
-            if not dfr_div.empty:
-                dfr_div = dfr_div.fillna(0)
+            # find the security_id for the symbol / ticker
+            security_id = ticker_sec_id.loc[ticker_sec_id.ticker == symbol ].id.iloc[0]     
 
-                tmp = dfr_div[dfr_div['dividend'] != 0.0]['dividend']
-                div = pd.DataFrame(data=tmp.index.tolist(), columns=['ex_date'])
+
+            # Make a database query
+            query =  """SELECT trade_date as date, open, high, low, close, volume 
+                        FROM daily_price WHERE security_id = {} order by trade_date """.format(security_id)
                 
-                # this makes automatic payout
-                div['record_date'] = div['ex_date']
-                div['declared_date'] = div['ex_date']
-                div['pay_date'] = div['ex_date']
+            dfr_price = pd.read_sql_query(query, engine, index_col='date', parse_dates=['date'])  
 
-                #div['record_date'] = pd.NaT
-                #div['declared_date'] = pd.NaT
-                #div['pay_date'] = pd.NaT
+            query =  """SELECT date as date, dividends as dividend FROM dividends WHERE
+                        security_id = {} order by date """.format(security_id)
+            dfr_div = pd.read_sql_query(query, engine, index_col='date', parse_dates=['date']) 
+
+            # Aussure that split date does not lie outside price date.
+            if not dfr_price.empty:
+                start_date_d = dfr_price.index[0].date()
+                end_date_d = dfr_price.index[-1].date()        
+
+                query =  """SELECT date, value as split FROM corp_action WHERE
+                        action ='split'  and security_id = {} and date >= '{}' and date <= '{}'  order by date """.format(security_id, start_date_d, end_date_d) 
+                dfr_split = pd.read_sql_query(query, engine, index_col='date', parse_dates=['date']) 
+
+
+            if not dfr_price.empty:
+                #print(symbol)
+                sid += 1
+
+                # check to see if there are missing dates in the middle
+                this_cal = us_calendar[(us_calendar >= dfr_price.index[0]) & (us_calendar <= dfr_price.index[-1])]
+                if len(this_cal) != dfr_price.shape[0]:
+                    print('MISSING interstitial dates for: %s using forward fill' % symbol)
+                    print('number of dates missing: {}'.format(len(this_cal) - dfr_price.shape[0]))
+                    df_desired = pd.DataFrame(index=this_cal.tz_localize(None))
+                    df_desired = df_desired.join(dfr_price)
+                    dfr_price = df_desired.fillna(method='ffill')    
+            
+                # Check first and last date of price data.
+                start_date = dfr_price.index[0]
+                end_date = dfr_price.index[-1]   
+                # The auto_close date is the day after the last trade.
+                ac_date = end_date + pd.Timedelta(days=1)        
+                # Add a row to the metadata DataFrame.
+                metadata.loc[sid] = start_date, end_date, ac_date, symbol, 'NYSE'    
+            
                 
-                div['amount'] = tmp.tolist()
-                div['sid'] = sid
+                # Divindents
+                if not dfr_div.empty:
+                    dfr_div = dfr_div.fillna(0)
 
-                divs = divs_splits['divs']
-                ind = pd.Index(range(divs.shape[0], divs.shape[0] + div.shape[0]))
-                div.set_index(ind, inplace=True)
-                divs_splits['divs'] = divs.append(div)                        
-            
-            # dfr_split['split']=0 # for the moment use adjused close and no split correction
-            # Splits
-            if not dfr_split.empty:
+                    tmp = dfr_div[dfr_div['dividend'] != 0.0]['dividend']
+                    div = pd.DataFrame(data=tmp.index.tolist(), columns=['ex_date'])
+                    
+                    # this makes automatic payout
+                    div['record_date'] = div['ex_date']
+                    div['declared_date'] = div['ex_date']
+                    div['pay_date'] = div['ex_date']
 
-                dfr_split = dfr_split.fillna(0)
+                    # this was my old version
+                    #div['record_date'] = pd.NaT
+                    #div['declared_date'] = pd.NaT
+                    #div['pay_date'] = pd.NaT
+                    
+                    # this is peters version
+                    #dfd.loc[:, 'ex_date'] = dfd.loc[:, 'record_date'] = dfd.index
+                    #dfd.loc[:, 'declared_date'] = dfd.loc[:, 'pay_date'] = dfd.index
 
-                tmp = dfr_split[(dfr_split['split'] != 0.0) ] 
-                tmp = 1. / tmp[tmp['split'] != 1.0 ]['split']
-                split = pd.DataFrame(data=tmp.index.tolist(),
-                                  columns=['effective_date'])
-                split['ratio'] = tmp.tolist()
-                split['sid'] = sid
-                splits = divs_splits['splits']
-                index = pd.Index(range(splits.shape[0],
-                                    splits.shape[0] + split.shape[0]))
-                split.set_index(index, inplace=True)
-                divs_splits['splits'] = splits.append(split)
-            
-            yield sid, dfr_price
 
-        else:    
-             print("""error, no price data for ("{}") found""".format(symbol) )
+                    div['amount'] = tmp.tolist()
+                    div['sid'] = sid
+
+                    divs = divs_splits['divs']
+                    ind = pd.Index(range(divs.shape[0], divs.shape[0] + div.shape[0]))
+                    div.set_index(ind, inplace=True)
+                    divs_splits['divs'] = divs.append(div)                        
+                
+                
+                # if we use adjusted prices set adjusted == True
+                adjusted = True
+                if adjusted == True:
+                
+                    dfr_split['split']=0 # use adjusted close and no split correction
+
+                if adjusted == False:   
+                # Splits use for all unadjusted prices 
+                    if not dfr_split.empty:
+
+                        dfr_split = dfr_split.fillna(0)
+
+                        tmp = dfr_split[(dfr_split['split'] != 0.0) ] 
+                        tmp = 1. / tmp[tmp['split'] != 1.0 ]['split']
+                        split = pd.DataFrame(data=tmp.index.tolist(),
+                                        columns=['effective_date'])
+                        split['ratio'] = tmp.tolist()
+                        split['sid'] = sid
+                        splits = divs_splits['splits']
+                        index = pd.Index(range(splits.shape[0],
+                                            splits.shape[0] + split.shape[0]))
+                        split.set_index(index, inplace=True)
+                        divs_splits['splits'] = splits.append(split)
+                
+                yield sid, dfr_price
+
+        #else:    
+        #     print("""error, no price data for ("{}") found""".format(symbol) )
